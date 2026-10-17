@@ -1,6 +1,7 @@
 package com.urbantransport.identity.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -37,5 +38,11 @@ public class GlobalExceptionHandler {
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest request) {
         return ResponseEntity.status(status)
                 .body(new ErrorResponse(Instant.now(), status.value(), message, request.getRequestURI()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleIntegrity(DataIntegrityViolationException exception,
+                                                         HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, "El registro ya existe o viola una restricción", request);
     }
 }

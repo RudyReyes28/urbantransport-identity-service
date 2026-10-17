@@ -27,4 +27,8 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID>, JpaSpec
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<UserEntity> findAllByBranchIdAndRoleAndActiveTrue(UUID branchId, Role role);
+
+    Optional<UserEntity> findByCustomerId(UUID customerId);
+
+    boolean existsByCustomerId(UUID customerId);
 }

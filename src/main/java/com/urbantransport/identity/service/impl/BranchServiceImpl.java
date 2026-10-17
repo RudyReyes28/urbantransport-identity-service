@@ -3,11 +3,13 @@ package com.urbantransport.identity.service.impl;
 import com.urbantransport.identity.domain.BranchEntity;
 import com.urbantransport.identity.domain.Role;
 import com.urbantransport.identity.domain.UserEntity;
+import com.urbantransport.identity.event.*;
 import com.urbantransport.identity.exception.ApiException;
 import com.urbantransport.identity.repository.BranchRepository;
 import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.service.BranchService;
 import com.urbantransport.identity.dto.*;
+import com.urbantransport.identity.service.OutboxService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,6 +27,7 @@ public class BranchServiceImpl implements BranchService {
     private final BranchRepository branchRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final OutboxService outboxService;
 
     /** La sucursal y su primer administrador se guardan en la misma transacción. */
     @Override
@@ -49,6 +52,8 @@ public class BranchServiceImpl implements BranchService {
                 .longitude(request.longitude())
                 .build());
 
+        outboxService.record(EventTypes.AGGREGATE_BRANCH, branch.getId(), EventTypes.BRANCH_CREATED, BranchEventPayload.fromEntity(branch));
+
         UserEntity admin = userRepository.save(UserEntity.builder()
                 .email(adminEmail)
                 .passwordHash(passwordEncoder.encode(request.admin().password()))
@@ -56,6 +61,7 @@ public class BranchServiceImpl implements BranchService {
                 .role(Role.BRANCH_ADMIN)
                 .branch(branch)
                 .build());
+        outboxService.record(EventTypes.AGGREGATE_USER, admin.getId(), EventTypes.USER_CREATED, UserEventPayload.fromEntity(admin));
 
         return new BranchCreatedResponse(BranchResponse.fromEntity(branch), UserResponse.fromEntity(admin));
     }
@@ -84,6 +90,9 @@ public class BranchServiceImpl implements BranchService {
         branch.setDepartment(request.department());
         branch.setLatitude(request.latitude());
         branch.setLongitude(request.longitude());
+
+        outboxService.record(EventTypes.AGGREGATE_BRANCH, branch.getId(), EventTypes.BRANCH_UPDATED, BranchEventPayload.fromEntity(branch));
+
         return BranchResponse.fromEntity(branch);
     }
 
@@ -92,6 +101,7 @@ public class BranchServiceImpl implements BranchService {
     public BranchResponse activate(UUID id) {
         BranchEntity branch = getOrThrow(id);
         branch.setActive(true);
+        outboxService.record(EventTypes.AGGREGATE_BRANCH, branch.getId(), EventTypes.BRANCH_UPDATED, BranchEventPayload.fromEntity(branch));
         return BranchResponse.fromEntity(branch);
     }
 
@@ -100,6 +110,7 @@ public class BranchServiceImpl implements BranchService {
     public BranchResponse deactivate(UUID id) {
         BranchEntity branch = getOrThrow(id);
         branch.setActive(false);
+        outboxService.record(EventTypes.AGGREGATE_BRANCH, branch.getId(), EventTypes.BRANCH_UPDATED, BranchEventPayload.fromEntity(branch));
         return BranchResponse.fromEntity(branch);
     }
 

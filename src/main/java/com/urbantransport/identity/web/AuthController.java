@@ -38,4 +38,10 @@ public class AuthController {
     public UserResponse me(@AuthenticationPrincipal Jwt jwt) {
         return authService.me(UUID.fromString(jwt.getSubject()));
     }
+
+    @PostMapping("/change-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(UUID.fromString(jwt.getSubject()), request);
+    }
 }

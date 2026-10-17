@@ -103,4 +103,17 @@ public class AuthServiceImpl implements AuthService {
     private boolean canAuthenticate(UserEntity user) {
         return user.isActive() && (user.getBranch() == null || user.getBranch().isActive());
     }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest request) {
+        UserEntity user = userRepository.findById(userId)
+                .filter(this::canAuthenticate)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Usuario no disponible"));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "La contraseña actual es incorrecta");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        refreshTokenRepository.revokeAllByUserId(user.getId());
+    }
 }

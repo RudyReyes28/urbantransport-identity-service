@@ -13,6 +13,8 @@ public final class EventTypes {
 
     public static final String CUSTOMER_NIT_CHANGED = "CustomerNitChanged";
 
+    public static final String DRIVER_DEACTIVATED = "DriverDeactivated";
+
     private EventTypes() {
     }
 }

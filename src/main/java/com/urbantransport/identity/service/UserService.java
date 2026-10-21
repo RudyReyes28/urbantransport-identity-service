@@ -1,24 +1,25 @@
 package com.urbantransport.identity.service;
 
-
 import com.urbantransport.identity.domain.Role;
+import com.urbantransport.identity.security.Actor;
 import com.urbantransport.identity.dto.*;
 
 import java.util.UUID;
 
 public interface UserService {
 
-    UserResponse create(CreateUserRequest request);
+    UserResponse create(Actor actor, CreateUserRequest request);
 
-    PageResponse<UserResponse> search(Role role, UUID branchId, Boolean active, String query, int page, int size);
+    PageResponse<UserResponse> search(Actor actor, Role role, UUID branchId, Boolean active, String query,
+                                      int page, int size);
 
-    UserResponse findById(UUID id);
+    UserResponse findById(Actor actor, UUID id);
 
-    UserResponse update(UUID id, UpdateUserRequest request);
+    UserResponse update(Actor actor, UUID id, UpdateUserRequest request);
 
-    UserResponse activate(UUID id);
+    UserResponse activate(Actor actor, UUID id);
 
-    UserResponse deactivate(UUID id, UUID actorId);
+    UserResponse deactivate(Actor actor, UUID id);
 
-    void resetPassword(UUID id, ResetPasswordRequest request);
+    void resetPassword(Actor actor, UUID id, ResetPasswordRequest request);
 }

@@ -9,6 +9,7 @@ import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.service.InternalUserService;
 import com.urbantransport.identity.service.OutboxService;
 import com.urbantransport.identity.dto.CreateCustomerUserRequest;
+import com.urbantransport.identity.dto.CreateDriverUserRequest;
 import com.urbantransport.identity.dto.UserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -44,6 +45,26 @@ public class InternalUserServiceImpl implements InternalUserService {
                 .role(Role.CUSTOMER)
                 .customerId(request.customerId())
                 .nit(request.nit().trim().toUpperCase(Locale.ROOT))
+                .build());
+
+        outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_CREATED,
+                UserEventPayload.fromEntity(user));
+        return UserResponse.fromEntity(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse createDriverUser(CreateDriverUserRequest request) {
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Ya existe un usuario con el correo " + email);
+        }
+
+        UserEntity user = userRepository.save(UserEntity.builder()
+                .email(email)
+                .passwordHash(passwordEncoder.encode(request.password()))
+                .fullName(request.fullName().trim())
+                .role(Role.DRIVER)
                 .build());
 
         outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_CREATED,

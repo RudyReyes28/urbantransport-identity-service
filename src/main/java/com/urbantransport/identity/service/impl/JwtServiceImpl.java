@@ -41,6 +41,10 @@ public class JwtServiceImpl implements JwtService {
             claims.claim("nit", user.getNit());
         }
 
+        if(user.getEmail() != null) {
+            claims.claim("email", user.getEmail());
+        }
+
         JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).type("JWT").build();
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
     }

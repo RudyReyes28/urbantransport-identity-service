@@ -38,7 +38,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public TokenResponse login(LoginRequest request) {
         UserEntity user = userRepository.findByEmailIgnoreCase(request.email().trim())
-                .filter(UserEntity::isActive)
+                .filter(this::canAuthenticate)
                 .filter(candidate -> passwordEncoder.matches(request.password(), candidate.getPasswordHash()))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS));
         return issueTokens(user);
@@ -60,7 +60,7 @@ public class AuthServiceImpl implements AuthService {
         if (stored.getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, INVALID_REFRESH);
         }
-        if (!user.isActive()) {
+        if (!canAuthenticate(user)) {
             refreshTokenRepository.revokeAllByUserId(user.getId());
             throw new ApiException(HttpStatus.UNAUTHORIZED, INVALID_REFRESH);
         }
@@ -80,7 +80,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     public UserResponse me(UUID userId) {
         return userRepository.findById(userId)
-                .filter(UserEntity::isActive)
+                .filter(this::canAuthenticate)
                 .map(UserResponse::fromEntity)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Usuario no disponible"));
     }
@@ -98,5 +98,22 @@ public class AuthServiceImpl implements AuthService {
                 rawRefreshToken,
                 jwtService.getAccessTokenTtlSeconds(),
                 UserResponse.fromEntity(user));
+    }
+
+    private boolean canAuthenticate(UserEntity user) {
+        return user.isActive() && (user.getBranch() == null || user.getBranch().isActive());
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest request) {
+        UserEntity user = userRepository.findById(userId)
+                .filter(this::canAuthenticate)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Usuario no disponible"));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "La contraseña actual es incorrecta");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        refreshTokenRepository.revokeAllByUserId(user.getId());
     }
 }

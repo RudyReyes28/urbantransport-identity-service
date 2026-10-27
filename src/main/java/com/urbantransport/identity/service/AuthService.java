@@ -13,4 +13,6 @@ public interface AuthService {
     void logout(RefreshRequest request);
 
     UserResponse me(UUID userId);
+
+    void changePassword(UUID userId, ChangePasswordRequest request);
 }

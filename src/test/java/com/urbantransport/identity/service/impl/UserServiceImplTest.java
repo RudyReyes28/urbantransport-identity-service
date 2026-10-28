@@ -4,11 +4,14 @@ import com.urbantransport.identity.domain.BranchEntity;
 import com.urbantransport.identity.domain.Role;
 import com.urbantransport.identity.domain.UserEntity;
 import com.urbantransport.identity.dto.*;
+import com.urbantransport.identity.event.EventTypes;
+import com.urbantransport.identity.event.UserEventPayload;
 import com.urbantransport.identity.exception.ApiException;
 import com.urbantransport.identity.repository.BranchRepository;
 import com.urbantransport.identity.repository.RefreshTokenRepository;
 import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.security.Actor;
+import com.urbantransport.identity.service.OutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +45,9 @@ class UserServiceImplTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private OutboxService outboxService;
+
     private UserServiceImpl userService;
     private UUID branchId;
     private BranchEntity activeBranch;
@@ -50,7 +56,7 @@ class UserServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        userService = new UserServiceImpl(userRepository, branchRepository, refreshTokenRepository, passwordEncoder);
+        userService = new UserServiceImpl(userRepository, branchRepository, refreshTokenRepository, passwordEncoder, outboxService);
         branchId = UUID.randomUUID();
         activeBranch = BranchEntity.builder().id(branchId).name("Central").active(true).build();
         sysAdmin = new Actor(UUID.randomUUID(), Role.SYSTEM_ADMIN, null);

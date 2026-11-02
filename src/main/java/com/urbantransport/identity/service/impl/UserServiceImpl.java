@@ -12,6 +12,7 @@ import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.repository.UserSpecifications;
 import com.urbantransport.identity.security.Actor;
 import com.urbantransport.identity.service.OutboxService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import com.urbantransport.identity.service.UserService;
 import com.urbantransport.identity.dto.*;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class UserServiceImpl implements UserService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final OutboxService outboxService;
+    private final PasswordSetupService passwordSetupService;
 
     @Override
     @Transactional
@@ -81,13 +83,14 @@ public class UserServiceImpl implements UserService {
 
         UserEntity user = userRepository.save(UserEntity.builder()
                 .email(email)
-                .passwordHash(passwordEncoder.encode(request.password()))
+                .passwordHash(passwordSetupService.unusablePasswordHash())
                 .fullName(request.fullName().trim())
                 .role(role)
                 .branch(branch)
                 .build());
 
         outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_CREATED, UserEventPayload.fromEntity(user));
+        passwordSetupService.issue(user);
         return UserResponse.fromEntity(user);
     }
 

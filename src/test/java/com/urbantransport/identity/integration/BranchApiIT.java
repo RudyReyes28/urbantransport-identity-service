@@ -32,11 +32,14 @@ class BranchApiIT extends AbstractIdentityIT {
         UUID adminId = UUID.fromString(read(response, "$.admin.id"));
 
         assertThat(jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?", String.class, adminId))
-                .startsWith("$2").isNotEqualTo(PASSWORD);
+                .startsWith("$2");
         assertThat(count("SELECT count(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = 'BranchCreated'",
                 branchId)).isEqualTo(1);
         assertThat(count("SELECT count(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = 'UserCreated'",
                 adminId)).isEqualTo(1);
+        assertThat(count("SELECT count(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = 'PasswordSetupRequested'",
+                adminId)).isEqualTo(1);
+        setupPassword(adminId, PASSWORD);
         login("admin.occ@it.test", PASSWORD);
     }
 

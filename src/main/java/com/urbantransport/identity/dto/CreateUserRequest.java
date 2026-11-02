@@ -7,7 +7,6 @@ import java.util.UUID;
 
 public record CreateUserRequest(
         @NotBlank @Email @Size(max = 150) String email,
-        @NotBlank @Size(min = 8, max = 72) String password,
         @NotBlank @Size(max = 120) String fullName,
         @NotNull Role role,
         UUID branchId) {

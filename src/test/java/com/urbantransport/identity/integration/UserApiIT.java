@@ -55,6 +55,8 @@ class UserApiIT extends AbstractIdentityIT {
         UUID id = UUID.fromString(read(response, "$.id"));
         assertThat(jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?", String.class, id))
                 .startsWith("$2");
+        assertThat(count("SELECT count(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = 'PasswordSetupRequested'",
+                id)).isEqualTo(1);
         createUser(admin, "admin.b2@it.test", Role.BRANCH_ADMIN, branchB.id());
         createUser(admin, "chofer.nuevo@it.test", Role.DRIVER, null);
         createUser(admin, "admin.sistema2@it.test", Role.SYSTEM_ADMIN, null);
@@ -309,7 +311,6 @@ class UserApiIT extends AbstractIdentityIT {
     private static Map<String, Object> userBody(String email, Role role, UUID branchId) {
         Map<String, Object> body = new HashMap<>();
         body.put("email", email);
-        body.put("password", PASSWORD);
         body.put("fullName", "Persona " + email);
         body.put("role", role.name());
         if (branchId != null) {

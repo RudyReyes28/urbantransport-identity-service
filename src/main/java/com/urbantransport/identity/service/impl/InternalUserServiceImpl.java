@@ -8,12 +8,12 @@ import com.urbantransport.identity.exception.ApiException;
 import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.service.InternalUserService;
 import com.urbantransport.identity.service.OutboxService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import com.urbantransport.identity.dto.CreateCustomerUserRequest;
 import com.urbantransport.identity.dto.CreateDriverUserRequest;
 import com.urbantransport.identity.dto.UserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,8 +24,8 @@ import java.util.Locale;
 public class InternalUserServiceImpl implements InternalUserService {
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
     private final OutboxService outboxService;
+    private final PasswordSetupService passwordSetupService;
 
     @Override
     @Transactional
@@ -40,7 +40,7 @@ public class InternalUserServiceImpl implements InternalUserService {
 
         UserEntity user = userRepository.save(UserEntity.builder()
                 .email(email)
-                .passwordHash(passwordEncoder.encode(request.password()))
+                .passwordHash(passwordSetupService.unusablePasswordHash())
                 .fullName(request.fullName().trim())
                 .role(Role.CUSTOMER)
                 .customerId(request.customerId())
@@ -49,6 +49,7 @@ public class InternalUserServiceImpl implements InternalUserService {
 
         outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_CREATED,
                 UserEventPayload.fromEntity(user));
+        passwordSetupService.issue(user);
         return UserResponse.fromEntity(user);
     }
 
@@ -62,13 +63,14 @@ public class InternalUserServiceImpl implements InternalUserService {
 
         UserEntity user = userRepository.save(UserEntity.builder()
                 .email(email)
-                .passwordHash(passwordEncoder.encode(request.password()))
+                .passwordHash(passwordSetupService.unusablePasswordHash())
                 .fullName(request.fullName().trim())
                 .role(Role.DRIVER)
                 .build());
 
         outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_CREATED,
                 UserEventPayload.fromEntity(user));
+        passwordSetupService.issue(user);
         return UserResponse.fromEntity(user);
     }
 }

@@ -10,9 +10,9 @@ import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.service.BranchService;
 import com.urbantransport.identity.dto.*;
 import com.urbantransport.identity.service.OutboxService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,8 +26,8 @@ public class BranchServiceImpl implements BranchService {
 
     private final BranchRepository branchRepository;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
     private final OutboxService outboxService;
+    private final PasswordSetupService passwordSetupService;
 
     /** La sucursal y su primer administrador se guardan en la misma transacción. */
     @Override
@@ -56,12 +56,13 @@ public class BranchServiceImpl implements BranchService {
 
         UserEntity admin = userRepository.save(UserEntity.builder()
                 .email(adminEmail)
-                .passwordHash(passwordEncoder.encode(request.admin().password()))
+                .passwordHash(passwordSetupService.unusablePasswordHash())
                 .fullName(request.admin().fullName().trim())
                 .role(Role.BRANCH_ADMIN)
                 .branch(branch)
                 .build());
         outboxService.record(EventTypes.AGGREGATE_USER, admin.getId(), EventTypes.USER_CREATED, UserEventPayload.fromEntity(admin));
+        passwordSetupService.issue(admin);
 
         return new BranchCreatedResponse(BranchResponse.fromEntity(branch), UserResponse.fromEntity(admin));
     }

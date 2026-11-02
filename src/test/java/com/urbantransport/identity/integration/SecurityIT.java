@@ -139,7 +139,7 @@ class SecurityIT extends AbstractIdentityIT {
     @Test
     @DisplayName("/internal/** exige la clave compartida: sin clave 401, con JWT de usuario 403, clave errónea 401")
     void internalEndpointsRequireTheSharedKey() throws Exception {
-        Map<String, Object> body = Map.of("email", "interno@it.test", "password", PASSWORD,
+        Map<String, Object> body = Map.of("email", "interno@it.test",
                 "fullName", "Cliente Interno", "customerId", UUID.randomUUID(), "nit", "1234567-8");
         String url = "/internal/users/customer";
 

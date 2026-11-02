@@ -1,6 +1,7 @@
 package com.urbantransport.identity.web;
 
 import com.urbantransport.identity.service.AuthService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import com.urbantransport.identity.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordSetupService passwordSetupService;
 
     @PostMapping("/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest request) {
@@ -43,5 +45,17 @@ public class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ChangePasswordRequest request) {
         authService.changePassword(UUID.fromString(jwt.getSubject()), request);
+    }
+
+    @PostMapping("/password-setup")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setupPassword(@Valid @RequestBody SetupPasswordRequest request) {
+        passwordSetupService.setup(request);
+    }
+
+    @PostMapping("/password-setup/resend")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resendPasswordSetup(@Valid @RequestBody ResendPasswordSetupRequest request) {
+        passwordSetupService.resend(request);
     }
 }

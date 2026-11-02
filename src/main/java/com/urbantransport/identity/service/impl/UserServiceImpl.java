@@ -3,12 +3,16 @@ package com.urbantransport.identity.service.impl;
 import com.urbantransport.identity.domain.BranchEntity;
 import com.urbantransport.identity.domain.Role;
 import com.urbantransport.identity.domain.UserEntity;
+import com.urbantransport.identity.event.EventTypes;
+import com.urbantransport.identity.event.UserEventPayload;
 import com.urbantransport.identity.exception.ApiException;
 import com.urbantransport.identity.repository.BranchRepository;
 import com.urbantransport.identity.repository.RefreshTokenRepository;
 import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.repository.UserSpecifications;
 import com.urbantransport.identity.security.Actor;
+import com.urbantransport.identity.service.OutboxService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import com.urbantransport.identity.service.UserService;
 import com.urbantransport.identity.dto.*;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +36,8 @@ public class UserServiceImpl implements UserService {
     private final BranchRepository branchRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final OutboxService outboxService;
+    private final PasswordSetupService passwordSetupService;
 
     @Override
     @Transactional
@@ -74,13 +80,17 @@ public class UserServiceImpl implements UserService {
             throw new ApiException(HttpStatus.CONFLICT, "Ya existe un usuario con el correo " + email);
         }
 
+
         UserEntity user = userRepository.save(UserEntity.builder()
                 .email(email)
-                .passwordHash(passwordEncoder.encode(request.password()))
+                .passwordHash(passwordSetupService.unusablePasswordHash())
                 .fullName(request.fullName().trim())
                 .role(role)
                 .branch(branch)
                 .build());
+
+        outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_CREATED, UserEventPayload.fromEntity(user));
+        passwordSetupService.issue(user);
         return UserResponse.fromEntity(user);
     }
 
@@ -117,6 +127,7 @@ public class UserServiceImpl implements UserService {
         }
         user.setEmail(email);
         user.setFullName(request.fullName().trim());
+        outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_UPDATED, UserEventPayload.fromEntity(user));
         return UserResponse.fromEntity(user);
     }
 
@@ -142,6 +153,7 @@ public class UserServiceImpl implements UserService {
             user.setDeactivatedBy(actor.userId());
             refreshTokenRepository.revokeAllByUserId(user.getId());
         }
+        outboxService.record(EventTypes.AGGREGATE_USER, user.getId(), EventTypes.USER_DEACTIVATED, UserEventPayload.fromEntity(user));
         return UserResponse.fromEntity(user);
     }
 

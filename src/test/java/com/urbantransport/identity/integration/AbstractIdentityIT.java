@@ -85,6 +85,7 @@ public abstract class AbstractIdentityIT {
     @BeforeEach
     protected void resetDatabase() {
         jdbc.update("DELETE FROM refresh_tokens");
+        jdbc.update("DELETE FROM password_setup_tokens");
         jdbc.update("DELETE FROM processed_events");
         jdbc.update("DELETE FROM outbox_events");
         jdbc.update("UPDATE users SET deactivated_by = NULL");
@@ -138,7 +139,7 @@ public abstract class AbstractIdentityIT {
                 "department", "Quetzaltenango",
                 "latitude", new BigDecimal("14.834700"),
                 "longitude", new BigDecimal("-91.518000"),
-                "admin", Map.of("email", adminEmail, "password", PASSWORD, "fullName", "Admin " + code));
+                "admin", Map.of("email", adminEmail, "fullName", "Admin " + code));
     }
 
     /** Crea una sucursal (y su BRANCH_ADMIN) usando al SYSTEM_ADMIN. */
@@ -146,42 +147,61 @@ public abstract class AbstractIdentityIT {
         String adminEmail = "admin." + code.toLowerCase() + "@it.test";
         String response = responseBody(send(post("/branches"), adminToken(), branchRequest(code, adminEmail))
                 .andExpect(status().isCreated()));
-        return new Branch(UUID.fromString(read(response, "$.branch.id")), code, adminEmail,
-                UUID.fromString(read(response, "$.admin.id")));
+        UUID adminId = UUID.fromString(read(response, "$.admin.id"));
+        setupPassword(adminId, PASSWORD);
+        return new Branch(UUID.fromString(read(response, "$.branch.id")), code, adminEmail, adminId);
     }
 
     protected UUID createUser(String token, String email, Role role, UUID branchId) throws Exception {
         Map<String, Object> body = new HashMap<>();
         body.put("email", email);
-        body.put("password", PASSWORD);
         body.put("fullName", "Usuario " + email);
         body.put("role", role.name());
         if (branchId != null) {
             body.put("branchId", branchId);
         }
         String response = responseBody(send(post("/users"), token, body).andExpect(status().isCreated()));
-        return UUID.fromString(read(response, "$.id"));
+        UUID userId = UUID.fromString(read(response, "$.id"));
+        setupPassword(userId, PASSWORD);
+        return userId;
     }
 
     protected UUID createCustomerUser(String email, UUID customerId, String nit) throws Exception {
-        Map<String, Object> body = Map.of("email", email, "password", PASSWORD, "fullName", "Cliente " + email,
+        Map<String, Object> body = Map.of("email", email, "fullName", "Cliente " + email,
                 "customerId", customerId, "nit", nit);
         String response = responseBody(mockMvc.perform(post("/internal/users/customer")
                         .header("X-Internal-Key", INTERNAL_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(body)))
                 .andExpect(status().isCreated()));
-        return UUID.fromString(read(response, "$.id"));
+        UUID userId = UUID.fromString(read(response, "$.id"));
+        setupPassword(userId, PASSWORD);
+        return userId;
     }
 
     protected UUID createDriverUser(String email) throws Exception {
-        Map<String, Object> body = Map.of("email", email, "password", PASSWORD, "fullName", "Chofer " + email);
+        Map<String, Object> body = Map.of("email", email, "fullName", "Chofer " + email);
         String response = responseBody(mockMvc.perform(post("/internal/users/driver")
                         .header("X-Internal-Key", INTERNAL_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonMapper.writeValueAsString(body)))
                 .andExpect(status().isCreated()));
-        return UUID.fromString(read(response, "$.id"));
+        UUID userId = UUID.fromString(read(response, "$.id"));
+        setupPassword(userId, PASSWORD);
+        return userId;
+    }
+
+    protected String setupToken(UUID userId) {
+        String envelope = jdbc.queryForObject(
+                "SELECT payload FROM outbox_events WHERE aggregate_id = ? AND event_type = ? ORDER BY created_at DESC LIMIT 1",
+                String.class, userId, "PasswordSetupRequested");
+        String setupUrl = read(envelope, "$.payload.setupUrl");
+        return setupUrl.substring(setupUrl.indexOf("token=") + "token=".length());
+    }
+
+    protected void setupPassword(UUID userId, String password) throws Exception {
+        send(post("/auth/password-setup"), null, Map.of("token", setupToken(userId), "newPassword", password))
+                .andExpect(status().isNoContent());
     }
 
     // ------------------------------------------------------------------ PostgreSQL embebido

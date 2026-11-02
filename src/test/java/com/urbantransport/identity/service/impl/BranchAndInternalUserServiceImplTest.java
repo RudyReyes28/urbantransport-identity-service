@@ -9,13 +9,13 @@ import com.urbantransport.identity.exception.ApiException;
 import com.urbantransport.identity.repository.BranchRepository;
 import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.service.OutboxService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -37,23 +37,23 @@ class BranchAndInternalUserServiceImplTest {
     private UserRepository userRepository;
 
     @Mock
-    private PasswordEncoder passwordEncoder;
+    private OutboxService outboxService;
 
     @Mock
-    private OutboxService outboxService;
+    private PasswordSetupService passwordSetupService;
 
     private BranchServiceImpl branchService;
     private InternalUserServiceImpl internalUserService;
 
     @BeforeEach
     void setUp() {
-        branchService = new BranchServiceImpl(branchRepository, userRepository, passwordEncoder, outboxService);
-        internalUserService = new InternalUserServiceImpl(userRepository, passwordEncoder, outboxService);
+        branchService = new BranchServiceImpl(branchRepository, userRepository, outboxService, passwordSetupService);
+        internalUserService = new InternalUserServiceImpl(userRepository, outboxService, passwordSetupService);
     }
 
     @Test
     void branchCreateShouldValidateDuplicatesAndCreateBranchWithAdmin() {
-        InitialAdminRequest adminReq = new InitialAdminRequest(" Admin@Branch.com ", "secret123", " Branch Admin ");
+        InitialAdminRequest adminReq = new InitialAdminRequest(" Admin@Branch.com ", " Branch Admin ");
         CreateBranchRequest req = new CreateBranchRequest(
                 " Sucursal Xela ", " xel-01 ", "Av. Las Américas", "Quetzaltenango",
                 new BigDecimal("14.8347"), new BigDecimal("-91.5180"), adminReq);
@@ -70,7 +70,7 @@ class BranchAndInternalUserServiceImplTest {
 
         // 3. Creación exitosa
         when(userRepository.existsByEmailIgnoreCase("admin@branch.com")).thenReturn(false);
-        when(passwordEncoder.encode("secret123")).thenReturn("hashed");
+        when(passwordSetupService.unusablePasswordHash()).thenReturn("hashed");
         when(branchRepository.save(any(BranchEntity.class))).thenAnswer(inv -> {
             BranchEntity b = inv.getArgument(0);
             b.setId(UUID.randomUUID());
@@ -88,6 +88,7 @@ class BranchAndInternalUserServiceImplTest {
         assertEquals(Role.BRANCH_ADMIN, created.getAdmin().getRole());
         verify(outboxService).record(eq(EventTypes.AGGREGATE_BRANCH), any(), eq(EventTypes.BRANCH_CREATED), any());
         verify(outboxService).record(eq(EventTypes.AGGREGATE_USER), any(), eq(EventTypes.USER_CREATED), any());
+        verify(passwordSetupService).issue(any(UserEntity.class));
     }
 
     @Test
@@ -129,7 +130,7 @@ class BranchAndInternalUserServiceImplTest {
     void internalUserServiceShouldCreateCustomerAndDriverAndValidateConflicts() {
         UUID customerId = UUID.randomUUID();
         CreateCustomerUserRequest custReq = new CreateCustomerUserRequest(
-                " Cliente@Test.com ", "secret123", " Cliente Uno ", customerId, " 12345k ");
+                " Cliente@Test.com ", " Cliente Uno ", customerId, " 12345k ");
 
         // 1. Email duplicado en customer
         when(userRepository.existsByEmailIgnoreCase("cliente@test.com")).thenReturn(true);
@@ -142,7 +143,7 @@ class BranchAndInternalUserServiceImplTest {
 
         // 3. Creación exitosa de customer
         when(userRepository.existsByCustomerId(customerId)).thenReturn(false);
-        when(passwordEncoder.encode("secret123")).thenReturn("hashed");
+        when(passwordSetupService.unusablePasswordHash()).thenReturn("hashed");
         when(userRepository.save(any(UserEntity.class))).thenAnswer(inv -> {
             UserEntity u = inv.getArgument(0);
             u.setId(UUID.randomUUID());
@@ -154,12 +155,13 @@ class BranchAndInternalUserServiceImplTest {
         assertEquals("12345K", custResp.getNit());
 
         // 4. Creación de driver (conflicto de email y éxito)
-        CreateDriverUserRequest driverReq = new CreateDriverUserRequest(" Driver@Test.com ", "secret123", " Chofer ");
+        CreateDriverUserRequest driverReq = new CreateDriverUserRequest(" Driver@Test.com ", " Chofer ");
         when(userRepository.existsByEmailIgnoreCase("driver@test.com")).thenReturn(true);
         assertThrows(ApiException.class, () -> internalUserService.createDriverUser(driverReq));
 
         when(userRepository.existsByEmailIgnoreCase("driver@test.com")).thenReturn(false);
         UserResponse driverResp = internalUserService.createDriverUser(driverReq);
         assertEquals(Role.DRIVER, driverResp.getRole());
+        verify(passwordSetupService, times(2)).issue(any(UserEntity.class));
     }
 }

@@ -11,6 +11,7 @@ import com.urbantransport.identity.security.RsaKeyProvider;
 import com.urbantransport.identity.service.AuthService;
 import com.urbantransport.identity.service.BranchService;
 import com.urbantransport.identity.service.InternalUserService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import com.urbantransport.identity.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,9 +60,12 @@ class ControllersAndExceptionHandlerTest {
     @Mock
     private InternalUserService internalUserService;
 
+    @Mock
+    private PasswordSetupService passwordSetupService;
+
     @Test
     void authControllerShouldDelegateAllEndpoints() {
-        AuthController controller = new AuthController(authService);
+        AuthController controller = new AuthController(authService, passwordSetupService);
         UUID userId = UUID.randomUUID();
         Jwt jwt = buildJwt(userId, Role.SYSTEM_ADMIN, null);
 
@@ -84,6 +88,14 @@ class ControllersAndExceptionHandlerTest {
         assertEquals(userResp, controller.me(jwt));
         controller.changePassword(jwt, changePassReq);
         verify(authService).changePassword(userId, changePassReq);
+
+        SetupPasswordRequest setupReq = new SetupPasswordRequest("token", "new123456");
+        controller.setupPassword(setupReq);
+        verify(passwordSetupService).setup(setupReq);
+
+        ResendPasswordSetupRequest resendReq = new ResendPasswordSetupRequest("a@test.com");
+        controller.resendPasswordSetup(resendReq);
+        verify(passwordSetupService).resend(resendReq);
     }
 
     @Test
@@ -100,7 +112,7 @@ class ControllersAndExceptionHandlerTest {
 
         CreateBranchRequest createReq = new CreateBranchRequest(
                 "Central", "CEN", "Dir", "Dep", BigDecimal.ONE, BigDecimal.ONE,
-                new InitialAdminRequest("b@test.com", "12345678", "Admin"));
+                new InitialAdminRequest("b@test.com", "Admin"));
         UpdateBranchRequest updateReq = new UpdateBranchRequest(
                 "Central 2", "Dir", "Dep", BigDecimal.ONE, BigDecimal.ONE);
 
@@ -139,7 +151,7 @@ class ControllersAndExceptionHandlerTest {
         Jwt jwt = buildJwt(adminId, Role.SYSTEM_ADMIN, null);
 
         UserResponse userResp = new UserResponse(targetId, "u@test.com", "User", Role.CASHIER, null, null, null, true);
-        CreateUserRequest createReq = new CreateUserRequest("u@test.com", "12345678", "User", Role.CASHIER, UUID.randomUUID());
+        CreateUserRequest createReq = new CreateUserRequest("u@test.com", "User", Role.CASHIER, UUID.randomUUID());
         UpdateUserRequest updateReq = new UpdateUserRequest("u2@test.com", "User 2");
         ResetPasswordRequest resetReq = new ResetPasswordRequest("newPass123");
         PageResponse<UserResponse> pageResp = new PageResponse<>(List.of(userResp), 0, 20, 1, 1);
@@ -164,8 +176,8 @@ class ControllersAndExceptionHandlerTest {
         // InternalUserController
         InternalUserController internalController = new InternalUserController(internalUserService);
         CreateCustomerUserRequest custReq = new CreateCustomerUserRequest(
-                "c@test.com", "12345678", "Cust", UUID.randomUUID(), "12345");
-        CreateDriverUserRequest driverReq = new CreateDriverUserRequest("d@test.com", "12345678", "Driver");
+                "c@test.com", "Cust", UUID.randomUUID(), "12345");
+        CreateDriverUserRequest driverReq = new CreateDriverUserRequest("d@test.com", "Driver");
 
         when(internalUserService.createCustomerUser(custReq)).thenReturn(userResp);
         when(internalUserService.createDriverUser(driverReq)).thenReturn(userResp);

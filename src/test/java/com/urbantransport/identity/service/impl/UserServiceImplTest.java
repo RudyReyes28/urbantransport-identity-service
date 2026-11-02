@@ -4,11 +4,15 @@ import com.urbantransport.identity.domain.BranchEntity;
 import com.urbantransport.identity.domain.Role;
 import com.urbantransport.identity.domain.UserEntity;
 import com.urbantransport.identity.dto.*;
+import com.urbantransport.identity.event.EventTypes;
+import com.urbantransport.identity.event.UserEventPayload;
 import com.urbantransport.identity.exception.ApiException;
 import com.urbantransport.identity.repository.BranchRepository;
 import com.urbantransport.identity.repository.RefreshTokenRepository;
 import com.urbantransport.identity.repository.UserRepository;
 import com.urbantransport.identity.security.Actor;
+import com.urbantransport.identity.service.OutboxService;
+import com.urbantransport.identity.service.PasswordSetupService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +46,12 @@ class UserServiceImplTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private OutboxService outboxService;
+
+    @Mock
+    private PasswordSetupService passwordSetupService;
+
     private UserServiceImpl userService;
     private UUID branchId;
     private BranchEntity activeBranch;
@@ -50,7 +60,8 @@ class UserServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        userService = new UserServiceImpl(userRepository, branchRepository, refreshTokenRepository, passwordEncoder);
+        userService = new UserServiceImpl(userRepository, branchRepository, refreshTokenRepository, passwordEncoder, outboxService,
+                passwordSetupService);
         branchId = UUID.randomUUID();
         activeBranch = BranchEntity.builder().id(branchId).name("Central").active(true).build();
         sysAdmin = new Actor(UUID.randomUUID(), Role.SYSTEM_ADMIN, null);
@@ -61,49 +72,49 @@ class UserServiceImplTest {
     void createShouldEnforceRoleAndBranchRules() {
         // 1. No permite crear CUSTOMER
         assertThrows(ApiException.class, () -> userService.create(sysAdmin,
-                new CreateUserRequest("c@test.com", "12345678", "Cust", Role.CUSTOMER, null)));
+                new CreateUserRequest("c@test.com", "Cust", Role.CUSTOMER, null)));
 
         // 2. BRANCH_ADMIN intentando crear un rol distinto a CASHIER
         assertThrows(ApiException.class, () -> userService.create(branchAdmin,
-                new CreateUserRequest("b@test.com", "12345678", "Admin", Role.BRANCH_ADMIN, branchId)));
+                new CreateUserRequest("b@test.com", "Admin", Role.BRANCH_ADMIN, branchId)));
 
         // 3. BRANCH_ADMIN sin sucursal asignada en el token
         Actor orphanBranchAdmin = new Actor(UUID.randomUUID(), Role.BRANCH_ADMIN, null);
         assertThrows(ApiException.class, () -> userService.create(orphanBranchAdmin,
-                new CreateUserRequest("c@test.com", "12345678", "Cashier", Role.CASHIER, null)));
+                new CreateUserRequest("c@test.com", "Cashier", Role.CASHIER, null)));
 
         // 4. BRANCH_ADMIN intentando crear cajero en otra sucursal
         assertThrows(ApiException.class, () -> userService.create(branchAdmin,
-                new CreateUserRequest("c@test.com", "12345678", "Cashier", Role.CASHIER, UUID.randomUUID())));
+                new CreateUserRequest("c@test.com", "Cashier", Role.CASHIER, UUID.randomUUID())));
 
         // 5. SYSTEM_ADMIN creando CASHIER sin branchId -> 400
         assertThrows(ApiException.class, () -> userService.create(sysAdmin,
-                new CreateUserRequest("c@test.com", "12345678", "Cashier", Role.CASHIER, null)));
+                new CreateUserRequest("c@test.com", "Cashier", Role.CASHIER, null)));
 
         // 6. Sucursal no existe -> 404
         when(branchRepository.findById(branchId)).thenReturn(Optional.empty());
         assertThrows(ApiException.class, () -> userService.create(branchAdmin,
-                new CreateUserRequest("c@test.com", "12345678", "Cashier", Role.CASHIER, null)));
+                new CreateUserRequest("c@test.com", "Cashier", Role.CASHIER, null)));
 
         // 7. Sucursal inactiva -> 409
         BranchEntity inactiveBranch = BranchEntity.builder().id(branchId).active(false).build();
         when(branchRepository.findById(branchId)).thenReturn(Optional.of(inactiveBranch));
         assertThrows(ApiException.class, () -> userService.create(branchAdmin,
-                new CreateUserRequest("c@test.com", "12345678", "Cashier", Role.CASHIER, branchId)));
+                new CreateUserRequest("c@test.com", "Cashier", Role.CASHIER, branchId)));
 
         // 8. SYSTEM_ADMIN enviando branchId para SYSTEM_ADMIN o DRIVER -> 400
         assertThrows(ApiException.class, () -> userService.create(sysAdmin,
-                new CreateUserRequest("s@test.com", "12345678", "Sys", Role.SYSTEM_ADMIN, branchId)));
+                new CreateUserRequest("s@test.com", "Sys", Role.SYSTEM_ADMIN, branchId)));
 
         // 9. Correo duplicado -> 409
         when(branchRepository.findById(branchId)).thenReturn(Optional.of(activeBranch));
         when(userRepository.existsByEmailIgnoreCase("cashier@test.com")).thenReturn(true);
         assertThrows(ApiException.class, () -> userService.create(branchAdmin,
-                new CreateUserRequest(" Cashier@Test.com ", "12345678", "Cashier", Role.CASHIER, null)));
+                new CreateUserRequest(" Cashier@Test.com ", "Cashier", Role.CASHIER, null)));
 
         // 10. Creación exitosa con sucursal (BRANCH_ADMIN creando CASHIER) y sin sucursal (SYSTEM_ADMIN)
         when(userRepository.existsByEmailIgnoreCase(any())).thenReturn(false);
-        when(passwordEncoder.encode(any())).thenReturn("hashed");
+        when(passwordSetupService.unusablePasswordHash()).thenReturn("hashed");
         when(userRepository.save(any(UserEntity.class))).thenAnswer(inv -> {
             UserEntity u = inv.getArgument(0);
             u.setId(UUID.randomUUID());
@@ -111,12 +122,13 @@ class UserServiceImplTest {
         });
 
         UserResponse cashierResp = userService.create(branchAdmin,
-                new CreateUserRequest("cashier@test.com", "12345678", " Cashier ", Role.CASHIER, null));
+                new CreateUserRequest("cashier@test.com", " Cashier ", Role.CASHIER, null));
         assertEquals(branchId, cashierResp.getBranchId());
 
         UserResponse sysResp = userService.create(sysAdmin,
-                new CreateUserRequest("sys2@test.com", "12345678", " Sys 2 ", Role.SYSTEM_ADMIN, null));
+                new CreateUserRequest("sys2@test.com", " Sys 2 ", Role.SYSTEM_ADMIN, null));
         assertNull(sysResp.getBranchId());
+        verify(passwordSetupService, times(2)).issue(any(UserEntity.class));
     }
 
     @Test
